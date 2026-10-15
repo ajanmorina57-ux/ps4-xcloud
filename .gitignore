@@ -1,0 +1,31 @@
+# Local builds and generated executables
+/build/
+/cmake-build-*/
+*.elf
+*.oelf
+*.o
+
+# Generated PS4 packages and package metadata
+*.pkg
+/project.gp4
+/pkg_root/eboot.bin
+/pkg_root/project.gp4
+/pkg_root/sce_sys/param.sfo
+/pkg_root/sce_sys/about/
+/pkg_root/sce_module/
+/pkg_root/sce_sys/icon0.png
+/sce_sys/
+
+# Local credentials and environment settings
+.env
+.env.*
+!.env.example
+credentials.*
+*.token
+*.pem
+*.key
+
+# Editor and operating-system files
+.DS_Store
+.vscode/
+.idea/
