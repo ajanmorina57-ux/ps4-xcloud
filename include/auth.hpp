@@ -42,8 +42,16 @@ public:
         std::string& transferToken,
         const std::atomic<bool>* stopRequested = nullptr);
 
+    // Silent background token exchange: exchanges user's refresh_token for Long Play Token (LPT)
+    bool acquireConsoleTransferToken(std::string& transferToken);
+
     // Exchanges OAuth token for Xbox Live User Token and XSTS Token
     bool authenticateXboxLive();
+
+    // Persistent login storage on PS4 (/data/ps4-xcloud/tokens.json)
+    bool saveTokens() const;
+    bool loadSavedTokens();
+    bool refreshTokens();
 
     const XboxTokens& getTokens() const { return m_tokens; }
 

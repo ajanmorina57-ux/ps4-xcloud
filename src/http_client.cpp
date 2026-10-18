@@ -25,6 +25,11 @@ static int verifySslCallback(int libsslId, unsigned int verifyErr, void * const 
     (void)userArg;
     return verifyErr == 0;
 }
+
+static inline int32_t setRecvTimeOut(int32_t reqId, uint32_t usec) {
+    using Func = int32_t (*)(int32_t, uint32_t);
+    return reinterpret_cast<Func>(sceHttpSetRecvTimeOut)(reqId, usec);
+}
 #endif
 
 bool HttpClient::init() {
@@ -40,21 +45,21 @@ bool HttpClient::init() {
         printf("[HttpClient] sceNetInit failed: 0x%08X\n", ret);
         return false;
     }
-    ret = sceNetPoolCreate("netPool", 64 * 1024, 0);
+    ret = sceNetPoolCreate("netPool", 1024 * 1024, 0);
     if (ret < 0) {
         printf("[HttpClient] sceNetPoolCreate failed: 0x%08X\n", ret);
         return false;
     }
     s_libnetMemId = ret;
 
-    ret = sceSslInit(128 * 1024);
+    ret = sceSslInit(512 * 1024);
     if (ret < 0) {
         printf("[HttpClient] sceSslInit failed: 0x%08X\n", ret);
         return false;
     }
     s_libsslCtxId = ret;
 
-    ret = sceHttpInit(s_libnetMemId, s_libsslCtxId, 128 * 1024);
+    ret = sceHttpInit(s_libnetMemId, s_libsslCtxId, 512 * 1024);
     if (ret < 0) {
         printf("[HttpClient] sceHttpInit failed: 0x%08X\n", ret);
         return false;
@@ -117,6 +122,10 @@ HttpResponse HttpClient::get(
         return resp;
     }
 
+    sceHttpSetSendTimeOut(req, 10 * 1000 * 1000);
+    setRecvTimeOut(req, 10 * 1000 * 1000);
+    sceHttpAddRequestHeader(req, "Connection", "close", 0);
+
     for (const auto& [key, val] : headers) {
         sceHttpAddRequestHeader(req, key.c_str(), val.c_str(), 0);
     }
@@ -128,11 +137,28 @@ HttpResponse HttpClient::get(
         resp.statusCode = status;
         resp.success = (status >= 200 && status < 300);
 
-        char buf[2048];
-        int readBytes = 0;
-        while ((readBytes = sceHttpReadData(req, buf, sizeof(buf) - 1)) > 0) {
-            buf[readBytes] = '\0';
-            resp.body.append(buf, readBytes);
+        int contentLengthType = 0;
+        uint64_t contentLength = 0;
+        const int clRet = sceHttpGetResponseContentLength(req, &contentLengthType, &contentLength);
+        if (clRet == 0 && contentLengthType == ORBIS_HTTP_CONTENTLEN_EXIST) {
+            if (contentLength > 0) {
+                resp.body.reserve(static_cast<size_t>(contentLength));
+                char buf[2048];
+                while (resp.body.size() < contentLength) {
+                    const size_t toRead = std::min(sizeof(buf) - 1, static_cast<size_t>(contentLength - resp.body.size()));
+                    const int readBytes = sceHttpReadData(req, buf, toRead);
+                    if (readBytes <= 0) break;
+                    buf[readBytes] = '\0';
+                    resp.body.append(buf, readBytes);
+                }
+            }
+        } else {
+            char buf[2048];
+            int readBytes = 0;
+            while ((readBytes = sceHttpReadData(req, buf, sizeof(buf) - 1)) > 0) {
+                buf[readBytes] = '\0';
+                resp.body.append(buf, readBytes);
+            }
         }
     } else {
         int lastErrno = 0;
@@ -184,6 +210,8 @@ HttpResponse HttpClient::post(const std::string& url, const std::string& body, c
         return resp;
     }
     sceHttpSetSendTimeOut(req, 10 * 1000 * 1000);
+    setRecvTimeOut(req, 10 * 1000 * 1000);
+    sceHttpAddRequestHeader(req, "Connection", "close", 0);
 
     sceHttpAddRequestHeader(req, "Content-Type", contentType.c_str(), 0);
     for (const auto& [key, val] : headers) {
@@ -197,11 +225,28 @@ HttpResponse HttpClient::post(const std::string& url, const std::string& body, c
         resp.statusCode = status;
         resp.success = (status >= 200 && status < 300);
 
-        char buf[2048];
-        int readBytes = 0;
-        while ((readBytes = sceHttpReadData(req, buf, sizeof(buf) - 1)) > 0) {
-            buf[readBytes] = '\0';
-            resp.body.append(buf, readBytes);
+        int contentLengthType = 0;
+        uint64_t contentLength = 0;
+        const int clRet = sceHttpGetResponseContentLength(req, &contentLengthType, &contentLength);
+        if (clRet == 0 && contentLengthType == ORBIS_HTTP_CONTENTLEN_EXIST) {
+            if (contentLength > 0) {
+                resp.body.reserve(static_cast<size_t>(contentLength));
+                char buf[2048];
+                while (resp.body.size() < contentLength) {
+                    const size_t toRead = std::min(sizeof(buf) - 1, static_cast<size_t>(contentLength - resp.body.size()));
+                    const int readBytes = sceHttpReadData(req, buf, toRead);
+                    if (readBytes <= 0) break;
+                    buf[readBytes] = '\0';
+                    resp.body.append(buf, readBytes);
+                }
+            }
+        } else {
+            char buf[2048];
+            int readBytes = 0;
+            while ((readBytes = sceHttpReadData(req, buf, sizeof(buf) - 1)) > 0) {
+                buf[readBytes] = '\0';
+                resp.body.append(buf, readBytes);
+            }
         }
     } else {
         int lastErrno = 0;

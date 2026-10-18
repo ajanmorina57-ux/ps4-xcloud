@@ -26,6 +26,9 @@ struct PixelColor {
     static PixelColor Yellow()    { return {255, 215, 0, 255}; }
 };
 
+extern const uint8_t g_font8x8_basic[95][8];
+
+
 class DisplayEngine {
 public:
     DisplayEngine(int width = 1920, int height = 1080);
@@ -37,6 +40,12 @@ public:
     void clear(PixelColor color = PixelColor::XboxDark());
     void fillRect(int x, int y, int w, int h, PixelColor color);
     void drawBorder(int x, int y, int w, int h, int thickness, PixelColor color);
+    bool drawRgbaFrame(
+        const uint8_t* rgba,
+        uint32_t frameWidth,
+        uint32_t frameHeight,
+        size_t frameStride,
+        std::string& error);
 
     void drawChar(char c, int x, int y, int scale, PixelColor color);
     void drawText(const std::string& text, int x, int y, int scale, PixelColor color);

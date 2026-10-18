@@ -1,0 +1,125 @@
+diff --git a/src/impl/init.cpp b/src/impl/init.cpp
+index aad72dd3..f1848e95 100644
+--- a/src/impl/init.cpp
++++ b/src/impl/init.cpp
+@@ -41,6 +41,22 @@ struct Init::TokenPayload {
+ 	}
+ 
+ 	~TokenPayload() {
++#if defined(__ORBIS__)
++		// Creating a detached cleanup worker can exceed the PS4 homebrew
++		// thread budget. The last token is released after peer teardown, so
++		// finish cleanup on that thread instead of terminating if thread
++		// construction fails.
++		try {
++			Init::Instance().doCleanup();
++			cleanupPromise.set_value();
++		} catch (const std::exception &e) {
++			PLOG_WARNING << e.what();
++			cleanupPromise.set_exception(std::make_exception_ptr(e));
++		} catch (...) {
++			PLOG_WARNING << "Unknown error during RTC cleanup";
++			cleanupPromise.set_exception(std::current_exception());
++		}
++#else
+ 		std::thread t(
+ 		    [](std::promise<void> promise) {
+ 			    utils::this_thread::set_name("RTC cleanup");
+@@ -54,6 +70,7 @@ struct Init::TokenPayload {
+ 		    },
+ 		    std::move(cleanupPromise));
+ 		t.detach();
++#endif
+ 	}
+ 
+ 	std::promise<void> cleanupPromise;
+@@ -91,9 +108,19 @@ void Init::preload() {
+ }
+ 
+ std::shared_future<void> Init::cleanup() {
+-	std::lock_guard lock(mMutex);
+-	mGlobal.reset();
+-	return mCleanupFuture;
++	shared_ptr<void> global;
++	std::shared_future<void> future;
++	{
++		std::lock_guard lock(mMutex);
++		if (mGlobal)
++			global = std::move(*mGlobal);
++		mGlobal.reset();
++		future = mCleanupFuture;
++	}
++	// Releasing the last token may run TokenPayload::~TokenPayload(), which
++	// calls doCleanup() and needs mMutex.
++	global.reset();
++	return future;
+ }
+ 
+ void Init::setSctpSettings(SctpSettings s) {
+@@ -118,8 +145,15 @@ void Init::doInit() {
+ 		throw std::runtime_error("WSAStartup failed, error=" + std::to_string(WSAGetLastError()));
+ #endif
+ 
++	int count;
++#if defined(__ORBIS__)
++	// Orbis can report a wildly inaccurate logical CPU count. Match the
++	// bounded four-worker RTC pool used by the PS4-tested Nexo X4 client.
++	count = MIN_THREADPOOL_SIZE;
++#else
+ 	int concurrency = std::thread::hardware_concurrency();
+-	int count = std::max(concurrency, MIN_THREADPOOL_SIZE);
++	count = std::max(concurrency, MIN_THREADPOOL_SIZE);
++#endif
+ 	PLOG_DEBUG << "Spawning " << count << " threads";
+ 	ThreadPool::Instance().spawn(count);
+ 
+diff --git a/src/impl/utils.hpp b/src/impl/utils.hpp
+index 808fe1ed..df348160 100644
+--- a/src/impl/utils.hpp
++++ b/src/impl/utils.hpp
+@@ -14,6 +14,7 @@
+ #include <climits>
+ #include <limits>
+ #include <map>
++#include <mutex>
+ #include <random>
+ #include <stdexcept>
+ #include <vector>
+@@ -37,22 +38,30 @@ std::seed_seq random_seed();
+ template <typename Generator, typename Result = typename Generator::result_type>
+ struct random_engine_wrapper {
+ 	Generator &engine;
++	std::mutex &mutex;
+ 	using result_type = Result;
+ 	static constexpr result_type min() { return static_cast<Result>(Generator::min()); }
+ 	static constexpr result_type max() { return static_cast<Result>(Generator::max()); }
+-	inline result_type operator()() { return static_cast<Result>(engine()); }
+-	inline void discard(unsigned long long z) { engine.discard(z); }
++	inline result_type operator()() {
++		std::lock_guard<std::mutex> lock(mutex);
++		return static_cast<Result>(engine());
++	}
++	inline void discard(unsigned long long z) {
++		std::lock_guard<std::mutex> lock(mutex);
++		engine.discard(z);
++	}
+ };
+ 
+-// Return a wrapped thread-local seeded random number generator
++// Return a synchronized seeded random number generator
+ template <typename Generator = std::mt19937, typename Result = typename Generator::result_type>
+ auto random_engine() {
+-	static thread_local std::seed_seq seed = random_seed();
+-	static thread_local Generator engine{seed};
+-	return random_engine_wrapper<Generator, Result>{engine};
++	static std::mutex mutex;
++	static std::seed_seq seed = random_seed();
++	static Generator engine{seed};
++	return random_engine_wrapper<Generator, Result>{engine, mutex};
+ }
+ 
+-// Return a wrapped thread-local seeded random bytes generator
++// Return a wrapped synchronized seeded random bytes generator
+ template <typename Generator = std::mt19937> auto random_bytes_engine() {
+ 	using char_independent_bits_engine =
+ 	    std::independent_bits_engine<Generator, CHAR_BIT, unsigned short>;

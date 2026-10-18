@@ -7,6 +7,12 @@
 
 namespace xcloud {
 
+struct WebRtcSignaledCandidate {
+    std::string candidate;
+    std::string sdpMid;
+    int sdpMLineIndex = 0;
+};
+
 struct SdpCodec {
     int payloadType = -1;
     std::string name;

@@ -1,4 +1,6 @@
 #include "display.hpp"
+#include "frame_renderer.hpp"
+
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -11,7 +13,7 @@
 namespace xcloud {
 
 // Basic 8x8 bitmap font (ASCII 32 to 126)
-static const uint8_t font8x8_basic[95][8] = {
+const uint8_t g_font8x8_basic[95][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ' ' (32)
     {0x18,0x3C,0x3C,0x18,0x18,0x00,0x18,0x00}, // '!'
     {0x66,0x66,0x24,0x00,0x00,0x00,0x00,0x00}, // '"'
@@ -264,9 +266,31 @@ void DisplayEngine::drawBorder(int x, int y, int w, int h, int thickness, PixelC
     fillRect(x + w - thickness, y, thickness, h, color); // Right
 }
 
+bool DisplayEngine::drawRgbaFrame(
+    const uint8_t* rgba,
+    uint32_t frameWidth,
+    uint32_t frameHeight,
+    size_t frameStride,
+    std::string& error) {
+    if (!m_initialized || m_buffers[m_currentBuffer] == nullptr) {
+        error = "Display is not initialized.";
+        return false;
+    }
+    return renderRgbaFrame(
+        rgba,
+        frameWidth,
+        frameHeight,
+        frameStride,
+        m_buffers[m_currentBuffer],
+        static_cast<uint32_t>(m_width),
+        static_cast<uint32_t>(m_height),
+        static_cast<size_t>(m_width) * m_depth,
+        error);
+}
+
 void DisplayEngine::drawChar(char c, int x, int y, int scale, PixelColor color) {
     if (c < 32 || c > 126) c = '?';
-    const uint8_t* glyph = font8x8_basic[c - 32];
+    const uint8_t* glyph = g_font8x8_basic[c - 32];
     for (int row = 0; row < 8; ++row) {
         uint8_t bits = glyph[row];
         for (int col = 0; col < 8; ++col) {

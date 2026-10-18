@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include <string>
 
 namespace xcloud {
 
@@ -25,12 +26,23 @@ public:
     bool decodeFrame(const uint8_t* h264Data, size_t size, FrameInfo& outFrame);
 
     void shutdown();
+    const std::string& getLastError() const { return m_lastError; }
 
 private:
     void* m_decoderHandle = nullptr;
     void* m_decoderMemory = nullptr;
     size_t m_memorySize = 0;
+    void* m_sharedMemory = nullptr;
+    size_t m_sharedMemorySize = 0;
+    void* m_frameBuffer = nullptr;
+    size_t m_frameBufferSize = 0;
+    int64_t m_sharedMemoryOffset = -1;
+    int64_t m_frameBufferOffset = -1;
+    uint32_t m_maxWidth = 0;
+    uint32_t m_maxHeight = 0;
+    bool m_videoDecoderModuleLoaded = false;
     bool m_initialized = false;
+    std::string m_lastError;
 };
 
 } // namespace xcloud

@@ -1,0 +1,39 @@
+diff --git a/src/thread.h b/src/thread.h
+index 8d35958..5ce5488 100644
+--- a/src/thread.h
++++ b/src/thread.h
+@@ -71,7 +71,7 @@ static inline void thread_join_impl(thread_t t, thread_return_t *res) {
+ #if defined(__linux__)
+ #include <sys/prctl.h> // for prctl(PR_SET_NAME)
+ #endif
+-#if defined(__FreeBSD__)
++#if defined(__FreeBSD__) && !defined(__ORBIS__)
+ #include <pthread_np.h> // for pthread_set_name_np
+ #endif
+ 
+@@ -121,7 +121,7 @@ static inline void thread_set_name_self(const char *name) {
+ 	prctl(PR_SET_NAME, name);
+ #elif defined(__APPLE__)
+ 	pthread_setname_np(name);
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__) && !defined(__ORBIS__)
+ 	pthread_set_name_np(pthread_self(), name);
+ #else
+ 	(void)name;
+diff --git a/src/udp.c b/src/udp.c
+index 993ec0f..d303d9b 100644
+--- a/src/udp.c
++++ b/src/udp.c
+@@ -84,7 +84,12 @@ static socket_t create_socket_for_addrinfo(const udp_socket_config_t *config,
+ 	setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (const char *)&buffer_size, sizeof(buffer_size));
+ 
+ 	ctl_t nbio = 1;
++#ifdef __ORBIS__
++	const sockopt_t socket_nbio = 0x1200;
++	if (setsockopt(sock, SOL_SOCKET, socket_nbio, (const char *)&nbio, sizeof(nbio))) {
++#else
+ 	if (ioctlsocket(sock, FIONBIO, &nbio)) {
++#endif
+ 		JLOG_ERROR("Setting non-blocking mode on UDP socket failed, errno=%d", sockerrno);
+ 		goto error;
+ 	}

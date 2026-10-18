@@ -1,0 +1,122 @@
+diff --git a/usrsctplib/netinet/sctp_os_userspace.h b/usrsctplib/netinet/sctp_os_userspace.h
+index 066fd40..0e91505 100755
+--- a/usrsctplib/netinet/sctp_os_userspace.h
++++ b/usrsctplib/netinet/sctp_os_userspace.h
+@@ -405,7 +405,7 @@ int win_if_nametoindex(const char *);
+ #define mtx_unlock(arg1)
+ #define mtx_assert(arg1,arg2)
+ #define MA_OWNED 7 /* sys/mutex.h typically on FreeBSD */
+-#if !defined(__FreeBSD__)
++#if !defined(__FreeBSD__) || defined(__ORBIS__)
+ struct mtx {int dummy;};
+ #if !defined(__NetBSD__)
+ struct selinfo {int dummy;};
+@@ -453,7 +453,7 @@ struct sx {int dummy;};
+ /* was a 0 byte file.  needed for structs if_data(64) and net_event_data */
+ #include <net/if_var.h>
+ #endif
+-#if defined(__FreeBSD__)
++#if defined(__FreeBSD__) && !defined(__ORBIS__)
+ #include <net/if_types.h>
+ /* #include <net/if_var.h> was a 0 byte file.  causes struct mtx redefinition */
+ #endif
+@@ -1077,7 +1077,7 @@ sctp_get_mbuf_for_msg(unsigned int space_needed, int want_header, int how, int a
+ /* with the current included files, this is defined in Linux but
+  *  in FreeBSD, it is behind a _KERNEL in sys/socket.h ...
+  */
+-#if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__native_client__)
++#if (defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__native_client__)) && !defined(__ORBIS__)
+ /* stolen from /usr/include/sys/socket.h */
+ #define CMSG_ALIGN(n)   _ALIGN(n)
+ #elif defined(__NetBSD__)
+@@ -1152,7 +1152,7 @@ in_broadcast(struct in_addr in)
+ 	        in.s_addr == htonl(INADDR_ANY));
+ }
+ 
+-#if defined(__APPLE__) || defined(__DragonFly__) || defined(__linux__) || defined(__native_client__) || defined(__NetBSD__) || defined(_WIN32) || defined(__Fuchsia__) || defined(__EMSCRIPTEN__)
++#if defined(__APPLE__) || defined(__DragonFly__) || defined(__linux__) || defined(__native_client__) || defined(__NetBSD__) || defined(_WIN32) || defined(__Fuchsia__) || defined(__EMSCRIPTEN__) || defined(__ORBIS__)
+ int
+ timingsafe_bcmp(const void *, const void *, size_t);
+ #endif
+diff --git a/usrsctplib/netinet/sctp_userspace.c b/usrsctplib/netinet/sctp_userspace.c
+index 7188890..1dff0a0 100755
+--- a/usrsctplib/netinet/sctp_userspace.c
++++ b/usrsctplib/netinet/sctp_userspace.c
+@@ -36,7 +36,7 @@
+ #endif
+ #endif
+ #include <netinet/sctp_os_userspace.h>
+-#if defined(__FreeBSD__)
++#if defined(__FreeBSD__) && !defined(__ORBIS__)
+ #include <pthread_np.h>
+ #endif
+ 
+@@ -89,7 +89,7 @@ sctp_userspace_set_threadname(const char *name)
+ #if defined(__linux__)
+ 	prctl(PR_SET_NAME, name);
+ #endif
+-#if defined(__FreeBSD__)
++#if defined(__FreeBSD__) && !defined(__ORBIS__)
+ 	pthread_set_name_np(pthread_self(), name);
+ #endif
+ }
+@@ -137,7 +137,7 @@ sctp_userspace_get_mtu_from_ifn(uint32_t if_index)
+ }
+ #endif
+ 
+-#if defined(__APPLE__) || defined(__DragonFly__) || defined(__linux__) || defined(__native_client__) || defined(__NetBSD__) || defined(__QNX__) || defined(_WIN32) || defined(__Fuchsia__) || defined(__EMSCRIPTEN__)
++#if defined(__APPLE__) || defined(__DragonFly__) || defined(__linux__) || defined(__native_client__) || defined(__NetBSD__) || defined(__QNX__) || defined(_WIN32) || defined(__Fuchsia__) || defined(__EMSCRIPTEN__) || defined(__ORBIS__)
+ int
+ timingsafe_bcmp(const void *b1, const void *b2, size_t n)
+ {
+diff --git a/usrsctplib/user_environment.c b/usrsctplib/user_environment.c
+index ea52f0a..6017fbf 100755
+--- a/usrsctplib/user_environment.c
++++ b/usrsctplib/user_environment.c
+@@ -115,6 +115,33 @@ read_random(void *buf, size_t size)
+ 	return;
+ }
+ 
++void
++finish_random(void)
++{
++	return;
++}
++#elif defined(__ORBIS__)
++#include <stdio.h>
++#include <stdlib.h>
++
++void
++init_random(void)
++{
++	return;
++}
++
++void
++read_random(void *buf, size_t size)
++{
++	FILE *source = fopen("/dev/urandom", "rb");
++	if (source == NULL || fread(buf, 1, size, source) != size) {
++		if (source != NULL)
++			fclose(source);
++		abort();
++	}
++	fclose(source);
++}
++
+ void
+ finish_random(void)
+ {
+diff --git a/usrsctplib/user_environment.h b/usrsctplib/user_environment.h
+index a545acc..8713202 100755
+--- a/usrsctplib/user_environment.h
++++ b/usrsctplib/user_environment.h
+@@ -33,7 +33,7 @@
+ /* __Userspace__ */
+ #include <sys/types.h>
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) && !defined(__ORBIS__)
+ #ifndef _SYS_MUTEX_H_
+ #include <sys/mutex.h>
+ #endif
